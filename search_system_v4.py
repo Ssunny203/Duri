@@ -5,19 +5,8 @@ from openai import OpenAI
 from pinecone import Pinecone
 from supabase import create_client, Client
 from dotenv import load_dotenv
-import logging
 from datetime import datetime
 from collections import defaultdict
-
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(f'logs/search_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'),
-        logging.StreamHandler()
-    ]
-)
 
 # 환경 변수 로드
 load_dotenv()
@@ -47,17 +36,15 @@ class FlexibleSearchSystem:
             'chunk': {'weight': 0.8, 'top_k': 2, 'description': '교과서'}
         }
         
-        logging.info("유연한 검색 시스템 초기화 완료")
+        # 로깅 대신 간단한 출력 (필요시 제거 가능)
+        # print("유연한 검색 시스템 초기화 완료")
     
     def create_query_embedding(self, query: str) -> List[float]:
         """검색 쿼리를 임베딩으로 변환"""
         try:
-            # 검색 키워드 분석 로깅
-            logging.info(f"검색어: '{query}'")
-            
-            # 쿼리를 그대로 임베딩 (키워드 분석은 로깅용)
-            words = query.split()
-            logging.info(f"검색 키워드: {words}")
+            # 검색 키워드 분석 (출력 제거 가능)
+            # words = query.split()
+            # print(f"검색 키워드: {words}")
             
             response = self.openai_client.embeddings.create(
                 input=query,
@@ -66,7 +53,7 @@ class FlexibleSearchSystem:
             )
             return response.data[0].embedding
         except Exception as e:
-            logging.error(f"쿼리 임베딩 생성 실패: {e}")
+            # print(f"쿼리 임베딩 생성 실패: {e}")
             raise
     
     def search_all_namespaces(self, query_embedding: List[float]) -> List[Dict]:
@@ -93,12 +80,8 @@ class FlexibleSearchSystem:
                     }
                     all_results.append(result)
                 
-                logging.info(f"{namespace} 검색: {len(response['matches'])}개, "
-                           f"최고점수: {response['matches'][0]['score']:.3f}" 
-                           if response['matches'] else f"{namespace} 검색: 0개")
-                
             except Exception as e:
-                logging.error(f"{namespace} 검색 중 오류: {e}")
+                # print(f"{namespace} 검색 중 오류: {e}")
                 continue
         
         # 가중치 적용 점수로 정렬
@@ -178,7 +161,7 @@ class FlexibleSearchSystem:
                 return response.data[0]
             return None
         except Exception as e:
-            logging.error(f"Concept 조회 중 오류: {e}")
+            # print(f"Concept 조회 중 오류: {e}")
             return None
     
     def extract_content_from_result(self, result: Dict) -> Dict[str, Any]:
@@ -275,7 +258,7 @@ class FlexibleSearchSystem:
             return answer + confidence_messages.get(confidence, "")
             
         except Exception as e:
-            logging.error(f"답변 생성 중 오류: {e}")
+            # print(f"답변 생성 중 오류: {e}")
             return "답변을 생성하는 중에 문제가 발생했어요. 다시 시도해주세요."
     
     def _format_content(self, content: Dict) -> str:
@@ -308,14 +291,13 @@ class FlexibleSearchSystem:
         """통합 검색 및 답변 생성"""
         start_time = datetime.now()
         
-        # 검색어 분석 표시 (화면에도 출력)
+        # 검색어 분석 표시 (화면에도 출력) - 필요시 제거 가능
         print(f"\n검색어: '{query}'")
         words = query.split()
         print(f"검색 키워드: {words}")
         print("-" * 40)
         
         # 1. 쿼리 임베딩 생성
-        logging.info(f"검색 시작: '{query}'")
         query_embedding = self.create_query_embedding(query)
         
         # 2. 모든 네임스페이스에서 병렬 검색
@@ -336,10 +318,6 @@ class FlexibleSearchSystem:
         
         # 4. 다양한 소스에서 결과 선택
         selected_results = self.select_diverse_results(all_results, max_results=3)
-        
-        logging.info(f"선택된 결과: {len(selected_results)}개, 신뢰도: {confidence} ({confidence_score:.3f})")
-        for r in selected_results:
-            logging.info(f"  - [{r['namespace']}] 점수: {r['score']:.3f} (가중: {r['weighted_score']:.3f})")
         
         # 5. 통합 답변 생성
         answer = self.generate_composite_answer(query, selected_results, confidence)
@@ -405,7 +383,8 @@ def interactive_search():
             break
         except Exception as e:
             print(f"\n❌ 오류가 발생했습니다: {e}")
-            logging.error(f"대화형 검색 오류: {e}", exc_info=True)
+            import traceback
+            traceback.print_exc()
 
 if __name__ == "__main__":
     interactive_search()
