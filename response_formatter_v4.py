@@ -6,7 +6,6 @@ paper_type, c_img_url, dictionary image_url 지원
 import os
 import json
 import random
-import logging
 import urllib.parse
 import requests
 import sys
@@ -21,22 +20,6 @@ from search_system_v4 import FlexibleSearchSystem
 
 # 환경 변수 로드
 load_dotenv()
-
-# 로깅 설정 - 파일 핸들러만 사용
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(f'formatter_{datetime.now().strftime("%Y%m%d")}.log', encoding='utf-8')
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# HTTP 로그 숨기기
-logging.getLogger('httpx').setLevel(logging.WARNING)
-logging.getLogger('httpcore').setLevel(logging.WARNING)
-logging.getLogger('urllib3').setLevel(logging.WARNING)
-
 
 # ==================== 출력 제어 유틸리티 ====================
 class SilentMode:
@@ -94,8 +77,6 @@ class SearchModule:
     
     def search(self, query: str) -> Dict[str, Any]:
         """검색 실행 - 모든 출력 억제"""
-        logger.info(f"검색 시작: {query}")
-        
         # 검색 시스템의 모든 출력을 억제
         with suppress_output():
             search_results = self.searcher.search_and_answer(query)
@@ -115,7 +96,6 @@ def extract_concept_ids(search_results: Dict[str, Any]) -> List[int]:
             concept_ids.add(int(concept_id))
     
     concept_ids_list = list(concept_ids)
-    logger.info(f"추출된 concept_ids: {concept_ids_list}")
     return concept_ids_list
 
 
@@ -143,7 +123,6 @@ def extract_search_context(search_results: Dict[str, Any]) -> Dict[str, Any]:
         elif namespace == 'faq':
             context['has_faq_result'] = True
     
-    logger.info(f"검색 컨텍스트: {context}")
     return context
 
 
@@ -207,10 +186,9 @@ def extract_core_keyword(query: str, concept_ids: List[int], supabase_client: Cl
             if response.data:
                 concept_name = response.data[0].get('concept_name', '')
                 if concept_name:
-                    logger.info(f"핵심 키워드 (concept_name): {concept_name}")
                     return concept_name
         except Exception as e:
-            logger.error(f"concept_name 조회 중 오류: {e}")
+            pass
     
     # 우선순위 단어 체크
     priority_words = ['고조선', '단군왕검', '8조법', '청동기', '철기', '백제', '고구려', '신라', 
@@ -218,7 +196,6 @@ def extract_core_keyword(query: str, concept_ids: List[int], supabase_client: Cl
     
     for word in priority_words:
         if word in query:
-            logger.info(f"핵심 키워드 (우선순위): {word}")
             return word
     
     # 조사 제거하고 키워드 추출
@@ -238,10 +215,8 @@ def extract_core_keyword(query: str, concept_ids: List[int], supabase_client: Cl
     
     if keywords:
         core_keyword = max(keywords, key=len)
-        logger.info(f"핵심 키워드 (추출): {core_keyword}")
         return core_keyword
     
-    logger.info(f"핵심 키워드 (전체): {query}")
     return query
 
 
@@ -264,7 +239,6 @@ def call_naver_api(query: str, client_id: str, client_secret: str) -> List[Dict]
         data = response.json()
         return data.get('items', [])
     except requests.exceptions.RequestException as e:
-        logger.error(f"네이버 API 요청 실패: {e}")
         return []
 
 
@@ -311,7 +285,6 @@ def get_related_links(query: str, concept_ids: List[int], supabase_client: Clien
             })
             
     except Exception as e:
-        logger.error(f"네이버 API 호출 중 오류: {e}")
         keyword_encoded = urllib.parse.quote(core_keyword)
         links.append({
             "title": f"네이버 지식백과에서 '{core_keyword}' 검색하기",
@@ -341,9 +314,8 @@ def get_images(concept_ids: List[int], search_context: Dict[str, Any], supabase_
                         "description": f"{word} 관련 이미지",
                         "source": "dictionary"
                     })
-                    logger.info(f"Dictionary 이미지 추가: {word}")
             except Exception as e:
-                logger.error(f"Dictionary 이미지 조회 중 오류: {e}")
+                pass
     
     # 2. FAQ가 주요 결과인 경우 - Chunk 이미지 우선 (chunk_concept_id 테이블)
     elif search_context['primary_namespace'] == 'faq' and concept_ids:
@@ -358,9 +330,8 @@ def get_images(concept_ids: List[int], search_context: Dict[str, Any], supabase_
                         "description": f"관련 교과서 이미지",
                         "source": "chunk"
                     })
-                    logger.info(f"Chunk 이미지 추가 (FAQ용): concept_id={concept_id}")
             except Exception as e:
-                logger.error(f"Chunk 이미지 조회 중 오류: {e}")
+                pass
     
     # 3. 부족하면 Concept 이미지로 채우기
     remaining_count = max_count - len(images)
@@ -376,7 +347,7 @@ def get_images(concept_ids: List[int], search_context: Dict[str, Any], supabase_
                         "source": "concept"
                     })
             except Exception as e:
-                logger.error(f"Concept 이미지 조회 중 오류: {e}")
+                pass
     
     return images
 
@@ -459,7 +430,7 @@ def get_problems(concept_ids: List[int], supabase_client: Client, max_count: int
                         break
                         
         except Exception as e:
-            logger.error(f"문제 조회 중 오류: {e}")
+            pass
         
         if len(problems) >= max_count:
             break
@@ -1000,8 +971,6 @@ class StudentFriendlyFormatter:
         # 네이버 API 설정
         self.naver_client_id = os.getenv('NAVER_CLIENT_ID')
         self.naver_client_secret = os.getenv('NAVER_CLIENT_SECRET')
-        
-        logger.info("학생 친화적 포매터 초기화 완료")
     
     def search_and_format(self, query: str) -> Dict[str, Any]:
         """검색 실행 후 학생 친화적으로 포맷팅"""
@@ -1068,7 +1037,6 @@ class StudentFriendlyFormatter:
             return formatted_response
             
         except Exception as e:
-            logger.error(f"포맷팅 중 오류 발생: {e}")
             return self._build_error_response(query, str(e))
     
     def _build_error_response(self, query: str, error_msg: str) -> Dict[str, Any]:
